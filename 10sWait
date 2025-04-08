@@ -1,0 +1,111 @@
+### Components:
+1. **Raspberry Pi 5**
+2. **BTS7960 Motor Control Board** (instead of L298N)
+3. **Linear Actuator**
+4. **2 ME-8108 Limit Switches**
+
+### Pin Configuration and Wiring:
+- **BTS7960 Motor Driver**:
+  - **Motor Control Pins (PWM, DIR)**: These are used to control the direction and speed of the motor.
+  - **VCC**: Connect to a 12V power source (for your motor).
+  - **GND**: Common ground between Raspberry Pi, motor driver, and the power supply.
+  - **Motor Pins (M+, M-)**: These are the motor terminals that will connect to your linear actuator.
+  - **Enable Pins (EN+ and EN-)**: These are used for motor speed control, typically via PWM.
+  - **Screw Terminals**: The BTS7960 features screw terminals for easy wire connections, so you won’t need to solder.
+
+- **Limit Switches**:
+  - One limit switch will be connected to a GPIO pin on the Raspberry Pi to detect when the actuator has extended.
+  - The second limit switch will be connected to another GPIO pin to detect when the actuator has retracted.
+
+### Wiring Diagram:
+- Connect **PWM and DIR pins** from the BTS7960 to two GPIO pins on the Raspberry Pi for motor direction and speed control (e.g., **GPIO17 for DIR** and **GPIO27 for PWM**).
+- Connect **motor terminals** (M+ and M-) to the linear actuator.
+- Connect **limit switches** to two GPIO pins (e.g., **GPIO22** for the extended switch and **GPIO23** for the retracted switch).
+- Power the BTS7960 with **12V** for the motor, and ensure the Raspberry Pi and motor driver share a common ground.
+
+### Python Code (Modified for BTS7960):
+```python
+import RPi.GPIO as GPIO
+import time
+
+# Pin setup
+motor_dir = 17  # GPIO pin for the direction (DIR) on BTS7960
+motor_pwm = 27  # GPIO pin for PWM control (EN) on BTS7960
+limit_switch_extended = 22  # GPIO pin for the extended limit switch
+limit_switch_retracted = 23  # GPIO pin for the retracted limit switch
+
+# Setup GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(motor_dir, GPIO.OUT)
+GPIO.setup(motor_pwm, GPIO.OUT)
+GPIO.setup(limit_switch_extended, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up resistor
+GPIO.setup(limit_switch_retracted, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up resistor
+
+# Setup PWM for motor speed control (optional)
+pwm_frequency = 1000  # Set PWM frequency (1kHz for example)
+motor_pwm_control = GPIO.PWM(motor_pwm, pwm_frequency)
+motor_pwm_control.start(100)  # Start PWM at 100% duty cycle
+
+def extend_actuator():
+    print("Extending actuator")
+    GPIO.output(motor_dir, GPIO.HIGH)  # Set direction to extend
+    motor_pwm_control.ChangeDutyCycle(100)  # Set speed to full
+
+def retract_actuator():
+    print("Retracting actuator")
+    GPIO.output(motor_dir, GPIO.LOW)  # Set direction to retract
+    motor_pwm_control.ChangeDutyCycle(100)  # Set speed to full
+
+def wait_for_limit_switch(pin):
+    print("Waiting for limit switch...")
+    while GPIO.input(pin) == GPIO.HIGH:  # Wait until the switch is pressed (LOW)
+        time.sleep(0.1)
+    print("Limit switch triggered!")
+
+def main():
+    try:
+        while True:
+            # Extend actuator until limit switch is hit
+            extend_actuator()
+            wait_for_limit_switch(limit_switch_extended)
+            print("Wait for 10 seconds...")
+            time.sleep(10)
+
+            # Retract actuator until second limit switch is hit
+            retract_actuator()
+            wait_for_limit_switch(limit_switch_retracted)
+            print("Wait for 10 seconds...")
+            time.sleep(10)
+
+    except KeyboardInterrupt:
+        print("Program interrupted")
+
+    finally:
+        GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()
+```
+
+### Explanation of Changes:
+1. **Motor Direction**:
+   - The **BTS7960** uses **DIR (direction)** and **PWM (speed)** pins to control the motor. 
+   - We are using **GPIO17** for the direction control (`motor_dir`) and **GPIO27** for PWM control (`motor_pwm`).
+   - The motor will move based on the direction set by the DIR pin, and the speed will be controlled by the PWM pin. In this example, we've set the PWM to full speed (100%).
+
+2. **PWM Control**:
+   - The **GPIO.PWM()** function creates a PWM signal on the specified GPIO pin to control the motor's speed.
+   - The motor will operate at full speed (100% duty cycle) during extension and retraction. You can adjust the duty cycle if you need to change the motor speed.
+
+3. **Limit Switches**:
+   - The limit switches are connected to **GPIO22** and **GPIO23**, which will detect when the actuator has hit its extended or retracted position.
+   - The function `wait_for_limit_switch()` waits until the input pin goes LOW (indicating the limit switch has been triggered).
+
+4. **Main Loop**:
+   - The actuator will extend until the first limit switch is triggered, then wait for 10 seconds.
+   - It will then retract until the second limit switch is triggered, wait for 10 seconds, and repeat the cycle.
+
+### Testing:
+1. **Power Setup**: Make sure your **12V power supply** is connected properly to the BTS7960 motor driver. Ensure the Raspberry Pi and the motor driver share a **common ground**.
+2. **Check Limit Switches**: Verify that the limit switches trigger correctly when the actuator reaches the extended and retracted positions.
+3. **Running the Code**: Once everything is wired and powered up, you can run the Python script, and the actuator should move as expected, waiting at each limit switch for the defined 10-second pause before reversing.
