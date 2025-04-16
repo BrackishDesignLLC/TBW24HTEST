@@ -1,0 +1,80 @@
+import RPi.GPIO as GPIO
+import time
+
+# Pin Definitions
+R_EN = 17      # GPIO17, Pin 11
+L_EN = 27      # GPIO27, Pin 13
+RPWM = 18      # GPIO18, Pin 12 (PWM for extend)
+LPWM = 23      # GPIO23, Pin 16 (PWM for retract)
+
+EXTEND_LIMIT = 5   # GPIO5, Pin 29
+RETRACT_LIMIT = 6  # GPIO6, Pin 31
+
+# Setup
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+
+# Motor Control Pins
+GPIO.setup(R_EN, GPIO.OUT)
+GPIO.setup(L_EN, GPIO.OUT)
+GPIO.setup(RPWM, GPIO.OUT)
+GPIO.setup(LPWM, GPIO.OUT)
+
+# Limit Switches
+GPIO.setup(EXTEND_LIMIT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up enabled
+GPIO.setup(RETRACT_LIMIT, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Pull-up enabled
+
+# PWM Setup
+pwm_extend = GPIO.PWM(RPWM, 1000)  # 1kHz frequency
+pwm_retract = GPIO.PWM(LPWM, 1000)  # 1kHz frequency
+
+def stop_motor():
+    GPIO.output(R_EN, GPIO.LOW)
+    GPIO.output(L_EN, GPIO.LOW)
+    pwm_extend.ChangeDutyCycle(0)
+    pwm_retract.ChangeDutyCycle(0)
+
+def extend_motor(speed=100):
+    GPIO.output(R_EN, GPIO.HIGH)
+    GPIO.output(L_EN, GPIO.LOW)
+    pwm_extend.ChangeDutyCycle(speed)
+    pwm_retract.ChangeDutyCycle(0)
+
+def retract_motor(speed=100):
+    GPIO.output(R_EN, GPIO.LOW)
+    GPIO.output(L_EN, GPIO.HIGH)
+    pwm_extend.ChangeDutyCycle(0)
+    pwm_retract.ChangeDutyCycle(speed)
+
+try:
+    pwm_extend.start(0)
+    pwm_retract.start(0)
+
+    while True:
+        # Extend until limit switch 1 is hit
+        print("Extending...")
+        extend_motor()
+        while GPIO.input(EXTEND_LIMIT):  # Loop until the switch is pressed (LOW)
+            time.sleep(0.05)
+
+        stop_motor()
+        print("Reached extend limit. Waiting 10 seconds...")
+        time.sleep(10)
+
+        # Retract until limit switch 2 is hit
+        print("Retracting...")
+        retract_motor()
+        while GPIO.input(RETRACT_LIMIT):  # Loop until the switch is pressed (LOW)
+            time.sleep(0.05)
+
+        stop_motor()
+        print("Reached retract limit. Waiting 10 seconds...")
+        time.sleep(10)
+
+except KeyboardInterrupt:
+    print("\nExiting gracefully.")
+finally:
+    stop_motor()
+    pwm_extend.stop()
+    pwm_retract.stop()
+    GPIO.cleanup()
